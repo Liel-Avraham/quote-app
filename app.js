@@ -26,7 +26,9 @@
   let searchTerm = '';
   let statusFilter = 'all';
   let migrationDismissed = false;
+let remoteDraft = null;
 
+   
   const STATUS_LABELS = {draft:'טיוטה', sent:'נשלחה', approved:'אושרה', cancelled:'בוטלה'};
   const STATUS_BADGE_CLASS = {draft:'badge-draft', sent:'badge-sent', approved:'badge-approved', cancelled:'badge-cancelled'};
 
