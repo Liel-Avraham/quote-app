@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>הצעת מחיר בקליק</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="network-banner" id="networkBanner">⚠️ אין חיבור לאינטרנט כרגע. השינויים לא יישמרו עד שהחיבור יחזור.</div>
+
+<!-- ============ LOADING (בזמן בדיקת session) ============ -->
+<div class="view" id="view-loading" data-view>
+  <div class="loading-block" style="padding-top:80px;">
+    <div class="spinner"></div>
+    טוען...
+  </div>
+</div>
+
+<!-- ============ AUTH (התחברות / הרשמה / שכחתי סיסמה / איפוס) ============ -->
+<div class="view" id="view-auth" data-view>
+  <div class="auth-wrapper">
+    <div class="auth-card" id="authFormArea"></div>
+  </div>
+</div>
+
+<!-- ============ HOME / DASHBOARD ============ -->
+<div class="app-shell view" id="view-home" data-view>
+  <header class="topbar">
+    <div class="topbar-row">
+      <div>
+        <h1>🧾 הצעת מחיר בקליק</h1>
+        <p>מ-0 להצעת מחיר מקצועית בפחות מדקה</p>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="icon-btn" id="btnOpenAccount" title="חשבון">👤</button>
+        <button class="icon-btn" id="btnOpenSettings" title="הגדרות העסק">⚙️</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div id="migrationBanner"></div>
+    <div id="draftBanner"></div>
+
+    <button class="hero-cta" id="btnNewQuote">➕ הצעת מחיר חדשה</button>
+
+    <div id="homeSummary"></div>
+    <div id="homeListArea">
+      <div class="loading-block"><div class="spinner"></div>טוען הצעות...</div>
+    </div>
+  </main>
+</div>
+
+<!-- ============ SETTINGS ============ -->
+<div class="app-shell view" id="view-settings" data-view>
+  <header class="topbar">
+    <div class="back-row">
+      <button class="icon-btn" id="btnSettingsBack">→</button>
+      <h1>⚙️ הגדרות העסק</h1>
+    </div>
+  </header>
+  <main>
+    <div class="card">
+      <h2>🏢 פרטי העסק</h2>
+      <div class="field">
+        <label for="setBizName">שם העסק</label>
+        <input type="text" id="setBizName" placeholder="לדוגמה: דני חשמל ותחזוקה">
+      </div>
+      <div class="field">
+        <label for="setBizPhone">טלפון העסק</label>
+        <input type="tel" id="setBizPhone" placeholder="050-1234567">
+      </div>
+      <div class="field">
+        <label for="setBizEmail">אימייל עסקי (לא חובה)</label>
+        <input type="text" id="setBizEmail" placeholder="business@example.com">
+      </div>
+      <div class="field">
+        <label for="setBizAddress">כתובת (לא חובה)</label>
+        <input type="text" id="setBizAddress" placeholder="רחוב, עיר">
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label for="setBizNumber">מספר עוסק / ח.פ (לא חובה)</label>
+        <input type="text" id="setBizNumber" placeholder="123456789">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🖼️ לוגו (לא חובה)</h2>
+      <div class="logo-upload-row">
+        <div class="logo-preview-box" id="logoPreviewBox"><span>🏷️</span></div>
+        <div>
+          <label class="file-label" for="logoInput">📤 העלאת לוגו</label>
+          <input type="file" id="logoInput" accept="image/*" style="display:none;">
+          <div>
+            <button type="button" class="qc-icon-btn danger" id="btnRemoveLogo" style="margin-top:8px;display:none;">🗑️ הסרת לוגו</button>
+          </div>
+        </div>
+      </div>
+      <small class="hint">הלוגו יוצג בראש כל הצעת מחיר. אם לא יועלה לוגו, המסמך עדיין ייראה מקצועי.</small>
+    </div>
+
+    <div class="card">
+      <h2>📄 תנאי תשלום ברירת מחדל</h2>
+      <div class="field" style="margin-bottom:0;">
+        <textarea id="setDefaultPayTerms" rows="2" placeholder="לדוגמה: 50% מקדמה, 50% בגמר העבודה."></textarea>
+        <small class="hint">יופיע אוטומטית בכל הצעה חדשה, וניתן לשנות לפי הצורך.</small>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🔢 מספור הצעות</h2>
+      <div class="field" style="margin-bottom:0;">
+        <label for="setNextNumber">מספר ההצעה הבא</label>
+        <input type="number" id="setNextNumber" min="1" step="1">
+        <small class="hint">המספר יעלה אוטומטית עם כל הצעה חדשה. שנו רק אם צריך לכוון את הרצף.</small>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn-primary" id="btnSaveSettings">💾 שמירת הגדרות</button>
+    </div>
+  </main>
+</div>
+
+<!-- ============ QUOTE FORM ============ -->
+<div class="app-shell view" id="view-form" data-view>
+  <header class="topbar">
+    <div class="back-row">
+      <button class="icon-btn" id="btnFormBack">→</button>
+      <h1 id="formTitle">הצעת מחיר חדשה</h1>
+    </div>
+  </header>
+
+  <main>
+    <div class="error-box" id="errorBox">
+      <strong>יש להשלים / לתקן את השדות הבאים:</strong>
+      <ul id="errorList"></ul>
+    </div>
+
+    <section class="card">
+      <h2>🏢 פרטי העסק</h2>
+      <div class="field">
+        <label for="bizName">שם העסק</label>
+        <input type="text" id="bizName" readonly>
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label for="bizPhone">טלפון העסק</label>
+        <input type="tel" id="bizPhone" readonly>
+        <small class="hint">פרטי העסק מוצגים מתוך ⚙️ הגדרות העסק. לשינוי קבוע — ערכו שם.</small>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>👤 פרטי הלקוח וההצעה</h2>
+      <div class="field">
+        <label for="custName">שם הלקוח *</label>
+        <input type="text" id="custName" placeholder="לדוגמה: ישראל ישראלי">
+      </div>
+      <div class="field">
+        <label for="custPhone">טלפון הלקוח (לא חובה)</label>
+        <input type="tel" id="custPhone" placeholder="050-1234567">
+      </div>
+      <div class="two-col">
+        <div class="field">
+          <label for="quoteNumber">מספר הצעה</label>
+          <input type="text" id="quoteNumber" readonly>
+        </div>
+        <div class="field">
+          <label for="quoteDate">תאריך</label>
+          <input type="date" id="quoteDate">
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label for="validDays">תוקף ההצעה (בימים)</label>
+        <input type="number" id="validDays" min="1" step="1" value="14">
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>🛠️ שירותים / מוצרים</h2>
+      <div id="rowsContainer"></div>
+      <button type="button" class="add-row-btn" id="addRowBtn">➕ הוספת שורה</button>
+    </section>
+
+    <section class="card">
+      <h2>💰 הנחה ומע״מ</h2>
+      <div class="field">
+        <label for="discount">הנחה בש״ח (לא חובה)</label>
+        <input type="number" id="discount" min="0" step="0.01" placeholder="0">
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label>מע״מ</label>
+        <div class="vat-options">
+          <label><input type="radio" name="vat" value="with" checked> כולל מע״מ (18%)</label>
+          <label><input type="radio" name="vat" value="without"> ללא מע״מ</label>
+        </div>
+        <small class="hint">כאשר בוחרים "כולל מע״מ" — המחירים שהוזנו בשורות השירות הם המחיר הסופי ללקוח, והמערכת מחשבת לבד את הפירוט (לפני מע״מ / מע״מ). ב"ללא מע״מ" — המחירים הם הסכום המלא לתשלום, בלי תוספת.</small>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>📄 תנאי תשלום והערות</h2>
+      <div class="field">
+        <label for="payTerms">תנאי תשלום</label>
+        <textarea id="payTerms" rows="3" placeholder="לדוגמה: 50% מקדמה, 50% בסיום העבודה."></textarea>
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label for="notes">הערות נוספות (לא חובה)</label>
+        <textarea id="notes" rows="2" placeholder="לדוגמה: המחיר אינו כולל חומרים / ההצעה בכפוף לבדיקה בשטח."></textarea>
+      </div>
+    </section>
+
+    <div class="actions">
+      <button type="button" class="btn-primary" id="previewBtn">👁️ תצוגה מקדימה ושמירה</button>
+      <button type="button" class="btn-danger-outline" id="clearBtn">🗑️ איפוס טופס</button>
+    </div>
+  </main>
+</div>
+
+<!-- ============ PREVIEW ============ -->
+<div class="view" id="view-preview" data-view>
+  <div class="preview-wrapper">
+    <div class="preview-actions no-print">
+      <button class="btn-accent" id="printBtn">🖨️ הדפס / PDF</button>
+      <button class="btn-whatsapp" id="waBtn">📱 שליחה בוואטסאפ</button>
+    </div>
+    <p class="wa-hint no-print">טיפ: שמרו קודם כ-PDF (כפתור ההדפסה), ואז צרפו אותו ידנית להודעת הוואטסאפ — לא ניתן לצרף קובץ אוטומטית מהדפדפן.</p>
+
+    <div class="status-row no-print">
+      <label for="statusSelect" style="font-weight:600;">סטטוס:</label>
+      <select id="statusSelect">
+        <option value="draft">טיוטה</option>
+        <option value="sent">נשלחה</option>
+        <option value="approved">אושרה</option>
+        <option value="cancelled">בוטלה</option>
+      </select>
+    </div>
+
+    <div class="quote" id="quoteDoc"></div>
+
+    <div class="preview-actions no-print" style="margin-top:14px;">
+      <button class="btn-outline" id="editFromPreviewBtn">✏️ עריכה</button>
+      <button class="btn-outline" id="duplicateFromPreviewBtn">🔁 שכפול</button>
+    </div>
+    <div class="preview-actions full no-print" style="margin-top:0;">
+      <button class="btn-outline" id="homeFromPreviewBtn">🏠 חזרה לדף הבית</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ACCOUNT ============ -->
+<div class="app-shell view" id="view-account" data-view>
+  <header class="topbar">
+    <div class="back-row">
+      <button class="icon-btn" id="btnAccountBack">→</button>
+      <h1>👤 חשבון</h1>
+    </div>
+  </header>
+  <main>
+    <div class="card">
+      <div class="account-row"><span class="lbl">אימייל</span><span class="val" id="accEmail">—</span></div>
+      <div class="account-row"><span class="lbl">תוכנית</span><span class="val" id="accPlan">FREE</span></div>
+    </div>
+
+    <div class="card">
+      <h2>🔑 שינוי סיסמה</h2>
+      <div class="error-box" id="pwErrorBox"><ul id="pwErrorList"></ul></div>
+      <div class="success-box" id="pwSuccessBox">הסיסמה עודכנה בהצלחה.</div>
+      <div class="field">
+        <label for="newPassword">סיסמה חדשה</label>
+        <input type="password" id="newPassword" placeholder="לפחות 6 תווים">
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label for="newPassword2">אימות סיסמה חדשה</label>
+        <input type="password" id="newPassword2" placeholder="הקלידו שוב">
+      </div>
+      <div class="actions">
+        <button class="btn-outline" id="btnChangePassword">עדכון סיסמה</button>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn-outline" id="btnLogout">🚪 התנתקות</button>
+    </div>
+
+    <div class="card danger-zone" style="margin-top:24px;">
+      <h2>⚠️ מחיקת חשבון</h2>
+      <p style="font-size:.85rem;color:var(--muted);margin:0 0 12px;">
+        פעולה זו תמחק לצמיתות את כל ההצעות, פרטי העסק והטיוטה שלך מהענן. הפעולה אינה הפיכה.
+      </p>
+      <button class="btn-danger-outline" id="btnDeleteAccount">מחיקת כל הנתונים שלי</button>
+    </div>
+  </main>
+</div>
+
+<div class="save-toast" id="saveToast"></div>
+
+<!-- ===== ספריית Supabase (CDN) — חייבת להיטען לפני config.js ו-app.js ===== -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+
+</body>
+      </html>
+      
