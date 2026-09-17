@@ -10,6 +10,9 @@
 (function(){
   "use strict";
 
+  const APP_VERSION = 'AUTH-FIX-2026-09-17';
+  console.log('[QuoteApp] app.js version: ' + APP_VERSION);
+
   const VAT_RATE = 0.18; // מקום יחיד לשינוי שיעור המע"מ בעתיד
 
   // מפתחות ה-localStorage של הגרסה הישנה (לצורך זיהוי וייבוא בלבד)
@@ -94,23 +97,66 @@
      ============  A U T H E N T I C A T I O N  ============
   ========================================================= */
 
+  // לוג בטוח לקונסול לכל פעולה מול Supabase - לעולם לא מדפיס סיסמה,
+  // access token, refresh token או כל מידע סודי אחר. רק את השדות
+  // שמסבירים מה נכשל ולמה.
+  function logSupabaseError(operation, error){
+    console.error({
+      operation,
+      message: error && error.message,
+      code: error && error.code,
+      status: error && error.status
+    });
+  }
+
   function mapAuthError(err, context){
+    logSupabaseError('auth:' + context, err);
     const msg = (err && err.message) ? err.message.toLowerCase() : '';
+    const status = err && err.status;
+
     if(context === 'login'){
-      // בכוונה לא מבדילים בין "אימייל לא קיים" ל"סיסמה שגויה"
-      return 'האימייל או הסיסמה אינם נכונים.';
+      // רק שגיאת "פרטי התחברות שגויים" האמיתית ממופה להודעה הכללית הזו -
+      // בכוונה כדי לא לחשוף אם האימייל קיים במערכת או לא (לפי דרישת
+      // האבטחה המקורית). כל שגיאה אחרת מוצגת בכנות ולא מוסתרת מאחורי
+      // "סיסמה שגויה" כשזו לא בהכרח הסיבה האמיתית.
+      if(msg.includes('invalid login credentials') || msg.includes('invalid_credentials')){
+        return 'האימייל או הסיסמה אינם נכונים.';
+      }
+      if(msg.includes('email not confirmed') || msg.includes('email_not_confirmed')){
+        return 'יש לאשר את כתובת האימייל (נשלח אליך מייל אימות) לפני ההתחברות.';
+      }
+      if(status === 429 || msg.includes('rate limit') || msg.includes('too many')){
+        return 'יותר מדי ניסיונות התחברות. המתינו כמה דקות ונסו שוב.';
+      }
+      if(msg.includes('failed to fetch') || msg.includes('network')){
+        return 'אין חיבור לשרת כרגע. בדקו את החיבור לאינטרנט ונסו שוב.';
+      }
+      // שגיאה לא מזוהה - לא מציגים "סיסמה שגויה" כשזה עלול להטעות.
+      // הפרטים המדויקים נרשמו בקונסול (F12) תחת operation: "auth:login".
+      return 'לא הצלחנו להתחבר כרגע (שגיאת שרת). נסו שוב בעוד רגע.';
     }
+
     if(context === 'signup'){
-      if(msg.includes('already') || msg.includes('registered') || msg.includes('exists')){
+      if(msg.includes('already') || msg.includes('registered') || msg.includes('exists') || msg.includes('duplicate')){
         return 'האימייל כבר רשום במערכת';
       }
       if(msg.includes('password')){
         return 'הסיסמה קצרה מדי';
       }
-      if(msg.includes('email')){
+      if(msg.includes('email') && (msg.includes('invalid') || msg.includes('valid'))){
         return 'האימייל שהוזן אינו תקין';
       }
+      if(status === 429 || msg.includes('rate limit') || msg.includes('too many')){
+        return 'יותר מדי ניסיונות הרשמה. המתינו כמה דקות ונסו שוב.';
+      }
+      if(msg.includes('failed to fetch') || msg.includes('network')){
+        return 'אין חיבור לשרת כרגע. בדקו את החיבור לאינטרנט ונסו שוב.';
+      }
+      // שגיאה לא מזוהה - הפרטים המדויקים נרשמו בקונסול (F12) תחת
+      // operation: "auth:signup". לא ממציאים סיבה שלא בטוחים בה.
+      return 'לא הצלחנו להשלים את ההרשמה כרגע (שגיאת שרת). נסו שוב בעוד רגע.';
     }
+
     return 'אירעה שגיאה. נסו שוב בעוד רגע.';
   }
 
@@ -241,7 +287,13 @@
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
   }
 
+  // מגן מפני קריאה כפולה במקביל ל-doLogin/doSignup (למשל Enter פעמיים
+  // ברצף לפני שהבקשה הראשונה הספיקה לחזור, או לחיצה כפולה על הכפתור)
+  let authActionInProgress = false;
+
   async function doLogin(){
+    console.log('[QuoteApp] doLogin AUTH-FIX-2026-09-17');
+    if(authActionInProgress){ return; }
     const email = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
     const errors = [];
@@ -249,20 +301,29 @@
     if(!password) errors.push('יש להזין סיסמה');
     if(errors.length){ showAuthErrors(errors); return; }
 
+    authActionInProgress = true;
     const btn = document.getElementById('btnLogin');
     btn.disabled = true; btn.textContent = 'מתחבר...';
     try{
       const { data, error } = await sb.auth.signInWithPassword({ email, password });
       if(error){ showAuthErrors([mapAuthError(error, 'login')]); return; }
-      // onAuthStateChange יטפל בהמשך (טעינת נתונים ומעבר לדף הבית)
+      // signInWithPassword הצליח ללא error - זה AUTH SUCCESS ודאי.
+      // onAuthStateChange יזהה 'SIGNED_IN' ויקרא ל-afterLogin() בהמשך;
+      // כל כשל מעבר לנקודה הזו (טעינת פרופיל/הצעות) מטופל שם בנפרד,
+      // ולא כאן - כדי שלעולם לא יוצג "שגיאת התחברות" על משהו שהוא
+      // בעצם כשל בטעינת נתונים אחרי התחברות מוצלחת.
     }catch(e){
+      logSupabaseError('auth:login:exception', e);
       showAuthErrors(['אין חיבור לשרת כרגע. בדקו את החיבור לאינטרנט ונסו שוב.']);
     }finally{
       btn.disabled = false; btn.textContent = 'התחברות';
+      authActionInProgress = false;
     }
   }
 
   async function doSignup(){
+    console.log('[QuoteApp] doSignup AUTH-FIX-2026-09-17');
+    if(authActionInProgress){ return; }
     const email = document.getElementById('signupEmail').value.trim();
     const password = document.getElementById('signupPassword').value;
     const password2 = document.getElementById('signupPassword2').value;
@@ -272,10 +333,14 @@
     if(password !== password2) errors.push('הסיסמאות אינן זהות');
     if(errors.length){ showAuthErrors(errors); return; }
 
+    authActionInProgress = true;
     const btn = document.getElementById('btnSignup');
     btn.disabled = true; btn.textContent = 'נרשם...';
     try{
-      const { data, error } = await sb.auth.signUp({ email, password });
+      const { data, error } = await sb.auth.signUp({
+        email, password,
+        options: { emailRedirectTo: window.location.origin + window.location.pathname }
+      });
       if(error){ showAuthErrors([mapAuthError(error, 'signup')]); return; }
       if(data && data.session){
         // אימות אוטומטי מופעל בפרויקט - יש session מיד, onAuthStateChange יטפל בהמשך
@@ -284,9 +349,11 @@
         renderAuthForm('checkEmail');
       }
     }catch(e){
+      logSupabaseError('auth:signup:exception', e);
       showAuthErrors(['אין חיבור לשרת כרגע. בדקו את החיבור לאינטרנט ונסו שוב.']);
     }finally{
       btn.disabled = false; btn.textContent = 'הרשמה';
+      authActionInProgress = false;
     }
   }
 
@@ -299,10 +366,13 @@
       const { error } = await sb.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin + window.location.pathname
       });
-      // לא חושפים אם האימייל קיים במערכת או לא - תמיד אותה הודעה
+      if(error){ logSupabaseError('auth:forgotPassword', error); }
+      // לא חושפים אם האימייל קיים במערכת או לא - תמיד אותה הודעה,
+      // גם אם הייתה שגיאה (הפרטים בכל זאת נרשמו בקונסול לצורך דיבוג)
       showAuthErrors([]);
       document.getElementById('authSuccessBox').classList.add('show');
     }catch(e){
+      logSupabaseError('auth:forgotPassword:exception', e);
       showAuthErrors(['אין חיבור לשרת כרגע. בדקו את החיבור לאינטרנט ונסו שוב.']);
     }finally{
       btn.disabled = false; btn.textContent = 'שליחת קישור לאיפוס';
@@ -321,10 +391,15 @@
     btn.disabled = true; btn.textContent = 'שומר...';
     try{
       const { error } = await sb.auth.updateUser({ password: p1 });
-      if(error){ showAuthErrors(['לא הצלחנו לעדכן את הסיסמה. נסו לבקש קישור חדש.']); return; }
+      if(error){
+        logSupabaseError('auth:resetPassword', error);
+        showAuthErrors(['לא הצלחנו לעדכן את הסיסמה. נסו לבקש קישור חדש.']);
+        return;
+      }
       showToast('הסיסמה עודכנה בהצלחה');
       await afterLogin();
     }catch(e){
+      logSupabaseError('auth:resetPassword:exception', e);
       showAuthErrors(['אין חיבור לשרת כרגע. בדקו את החיבור לאינטרנט ונסו שוב.']);
     }finally{
       btn.disabled = false; btn.textContent = 'שמירת סיסמה חדשה';
@@ -332,7 +407,7 @@
   }
 
   async function doLogout(){
-    try{ await sb.auth.signOut(); }catch(e){}
+    try{ await sb.auth.signOut(); }catch(e){ logSupabaseError('auth:logout', e); }
     currentUser = null; business = null; quotes = [];
     renderAuthForm('login');
     showView('auth');
@@ -340,13 +415,35 @@
 
   /* =========================================================
      טעינת נתוני האפליקציה אחרי התחברות
+     =========================================================
+     חשוב: מהרגע שיש session תקין (currentUser מוגדר), ה-AUTH
+     כבר הצליח סופית. כל מה שקורה מפה ואילך (business_profiles,
+     quotes, drafts) הוא שכבת "טעינת נתונים" נפרדת לגמרי - כשל
+     כאן לעולם לא אמור לגרום להצגת הודעת "שגיאת התחברות" ולעולם
+     לא מחזיר את המשתמש למסך ההתחברות.
   ========================================================= */
+  function defaultBusinessProfile(){
+    return {
+      business_name:'', phone:'', email:'', address:'', business_number:'',
+      logo_base64:null, next_quote_number:1001, default_payment_terms:'', plan:'free'
+    };
+  }
+
+  // מגן מפני הרצה כפולה של afterLogin() אם SIGNED_IN יורה יותר מפעם אחת
+  // (למשל טאב נוסף שמסתנכרן, או חפיפה בין init() לאירוע מהמאזין)
+  let afterLoginInProgress = false;
+
   async function afterLogin(){
+    if(afterLoginInProgress){
+      console.log('[QuoteApp] afterLogin כבר רץ - קריאה כפולה נחסמה');
+      return;
+    }
+    afterLoginInProgress = true;
     showView('loading');
     try{
       const { data: { session } } = await sb.auth.getSession();
       if(!session){ renderAuthForm('login'); showView('auth'); return; }
-      currentUser = session.user;
+      currentUser = session.user; // <-- מנקודה זו, AUTH SUCCESS ודאי
 
       business = await ensureBusinessProfile();
       quotes = await loadQuotesFromCloud();
@@ -356,18 +453,26 @@
       renderHome();
       checkLegacyMigration();
     }catch(e){
-      showToast('לא הצלחנו לטעון את הנתונים שלך. בדקו את החיבור לאינטרנט ונסו לרענן.', true);
+      // אם הגענו לכאן אחרי ש-currentUser כבר הוגדר, ההתחברות עצמה
+      // הצליחה - זהו כשל בטעינת נתונים (PROFILE/DATA ERROR), לא
+      // כשל אימות (AUTH ERROR). לכן ממשיכים לדף הבית ולא חוזרים
+      // למסך ההתחברות.
+      logSupabaseError('afterLogin:loadData', e);
+      if(!business) business = defaultBusinessProfile();
+      showToast('התחברת בהצלחה, אך לא הצלחנו לטעון את כל הנתונים שלך. בדקו את החיבור לאינטרנט ורעננו את הדף.', true);
       showView('home');
       renderHome();
+    }finally{
+      afterLoginInProgress = false;
     }
   }
 
   async function ensureBusinessProfile(){
     let { data, error } = await sb.from('business_profiles').select('*').eq('user_id', currentUser.id).maybeSingle();
-    if(error) throw error;
+    if(error){ logSupabaseError('data:ensureBusinessProfile:select', error); throw error; }
     if(!data){
       const created = await sb.from('business_profiles').insert({}).select().single();
-      if(created.error) throw created.error;
+      if(created.error){ logSupabaseError('data:ensureBusinessProfile:insert', created.error); throw created.error; }
       data = created.data;
     }
     return data;
@@ -378,7 +483,7 @@
       .select('*')
       .eq('user_id', currentUser.id)
       .order('updated_at', { ascending:false });
-    if(error) throw error;
+    if(error){ logSupabaseError('data:loadQuotesFromCloud', error); throw error; }
     return data || [];
   }
 
@@ -388,12 +493,20 @@
       if(error) throw error;
       remoteDraft = (data && data.draft) ? data.draft : null;
     }catch(e){
+      logSupabaseError('data:loadRemoteDraft', e);
       remoteDraft = null; // כשל בטעינת טיוטה לא אמור לחסום את שאר האפליקציה
     }
   }
 
   /* =========================================================
      אתחול: בדיקת session קיים + מאזין לשינויים
+     =========================================================
+     סדר האתחול (בכוונה, לפי הדרישה):
+     1. לקוח Supabase כבר נוצר ב-config.js (לפני שהקובץ הזה נטען)
+     2. init() קורא ל-getSession() כדי לבדוק אם כבר יש session שמור
+     3. onAuthStateChange מאזין לשינויי מצב עתידיים (SIGNED_IN/OUT)
+     4. רק אחרי שיש session תקין ו-currentUser מוגדר, נטענים
+        business_profiles / quotes / drafts - אף פעם לא לפני כן.
   ========================================================= */
   let authListenerReady = false;
 
@@ -425,6 +538,7 @@
         showView('auth');
       }
     }catch(e){
+      logSupabaseError('init:getSession', e);
       renderAuthForm('login');
       showView('auth');
     }
@@ -832,7 +946,7 @@
     if(!file.type || !file.type.startsWith('image/')){
       showToast('יש להעלות קובץ תמונה בלבד', true);
       return;
-        }
+    }
     const reader = new FileReader();
     reader.onload = function(e){
       const img = new Image();
@@ -1341,7 +1455,7 @@
       ${notesHtml}
 
       <div class="quote-footer">
-       הכלי מיועד ליצירת הצעות מחיר ואינו מהווה תחליף לתוכנת הנהלת חשבונות או לייעוץ מקצועי.
+        הכלי מיועד ליצירת הצעות מחיר ואינו מהווה תחליף לתוכנת הנהלת חשבונות או לייעוץ מקצועי.
       </div>
     `;
   }
@@ -1425,6 +1539,7 @@ ${bizPhoneFinal}`;
       document.getElementById('newPassword').value = '';
       document.getElementById('newPassword2').value = '';
     }catch(e){
+      logSupabaseError('auth:changePassword', e);
       errList.innerHTML = `<li>לא הצלחנו לעדכן את הסיסמה. נסו שוב.</li>`;
       errBox.classList.add('show');
     }finally{
